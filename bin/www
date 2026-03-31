@@ -1,0 +1,123 @@
+#!/usr/bin/env node
+
+/**
+ * Module dependencies.
+ */
+
+var app = require('../app');
+var debug = require('debug')('nodejs:server');
+var http = require('http');
+
+/**
+ * Get port from environment and store in Express.
+ */
+
+var port = normalizePort(process.env.PORT || '3000');
+app.set('port', port);
+
+/**
+ * Create HTTP server.
+ */
+
+var server = http.createServer(app);
+
+// Tích hợp websocket 
+const { Server } = require("socket.io");
+const io = new Server(server, {
+  cors: {
+    origin: "http://localhost:5173", // Cho phép Frontend (cổng 5173) kết nối tới
+    methods: ["GET", "POST"]
+  }
+});
+
+// Lắng nghe các sự kiện kết nối
+io.on("connection", (socket) => {
+  console.log("Một người dùng vừa kết nối Socket:", socket.id);
+
+  // 1. Khi Khách hoặc Admin mở khung chat -> Cho họ vào chung 1 "Phòng" (Room)
+  socket.on("join_chat", (chatId) => {
+    socket.join(chatId);
+    console.log(`[Socket] User ${socket.id} đã tham gia phòng chat: ${chatId}`);
+  });
+
+  // 2. Khi có người nhắn tin -> Bắn tin nhắn đó cho người kia ngay lập tức
+  socket.on("send_message", (data) => {
+    // data sẽ chứa nội dung tin nhắn, người gửi, máy tính đang hỏi...
+    // Lệnh io.to().emit() sẽ phát tin nhắn này tới tất cả những ai đang ở trong phòng chatId
+    io.to(data.chatId).emit("receive_message", data);
+  });
+
+  // 3. Khi người dùng tắt web
+  socket.on("disconnect", () => {
+    console.log("Một người dùng đã ngắt kết nối:", socket.id);
+  });
+});
+// =======================================================
+
+/**
+ * Listen on provided port, on all network interfaces.
+ */
+
+server.listen(port);
+server.on('error', onError);
+server.on('listening', onListening);
+
+/**
+ * Normalize a port into a number, string, or false.
+ */
+
+function normalizePort(val) {
+  var port = parseInt(val, 10);
+
+  if (isNaN(port)) {
+    // named pipe
+    return val;
+  }
+
+  if (port >= 0) {
+    // port number
+    return port;
+  }
+
+  return false;
+}
+
+/**
+ * Event listener for HTTP server "error" event.
+ */
+
+function onError(error) {
+  if (error.syscall !== 'listen') {
+    throw error;
+  }
+
+  var bind = typeof port === 'string'
+    ? 'Pipe ' + port
+    : 'Port ' + port;
+
+  // handle specific listen errors with friendly messages
+  switch (error.code) {
+    case 'EACCES':
+      console.error(bind + ' requires elevated privileges');
+      process.exit(1);
+      break;
+    case 'EADDRINUSE':
+      console.error(bind + ' is already in use');
+      process.exit(1);
+      break;
+    default:
+      throw error;
+  }
+}
+
+/**
+ * Event listener for HTTP server "listening" event.
+ */
+
+function onListening() {
+  var addr = server.address();
+  var bind = typeof addr === 'string'
+    ? 'pipe ' + addr
+    : 'port ' + addr.port;
+  debug('Listening on ' + bind);
+}
